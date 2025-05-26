@@ -50,6 +50,30 @@ class LunarLanderSimulation:
             # Set these properties even when not visualizing
             self.screen_width = 800
             self.screen_height = 600
+    def __init__(self):
+        # Initialize Pygame
+        pygame.init()
+
+        # Screen setup
+        self.screen_width = 800
+        self.screen_height = 600
+        self.screen = pygame.display.set_mode((self.screen_width, self.screen_height))
+        pygame.display.set_caption("Lunar Lander Simulation")
+
+        # Enhanced colors and visuals
+        self.BACKGROUND = (5, 5, 20)  # Dark blue background
+        self.WHITE = (255, 255, 255)
+        self.GRAY = (150, 150, 150)
+        self.BLACK = (0, 0, 0)
+        self.RED = (255, 50, 50)
+        self.GREEN = (50, 255, 50)
+        self.BLUE = (50, 50, 255)
+        self.YELLOW = (255, 255, 0)
+        self.ORANGE = (255, 165, 0)
+
+        # Particle effects
+        self.particles = []
+        self.stars = self._generate_stars(150)  # Generate 150 stars for background
 
         # Create directories for saving
         os.makedirs("models", exist_ok=True)
@@ -63,6 +87,21 @@ class LunarLanderSimulation:
         self.num_episodes = 2000  # More episodes for stable learning
         self.max_steps_per_episode = 800  # Longer episodes to help learn landing
         self.target_update_frequency = 4  # Update target network frequently
+        # Clock for controlling frame rate
+        self.clock = pygame.time.Clock()
+
+        # Font for displaying stats
+        self.font = pygame.font.Font(None, 24)  # Smaller font for more stats
+        self.title_font = pygame.font.Font(None, 36)  # Larger font for titles
+
+        # Environment and Agent
+        self.env = LunarLanderEnvironment(self.screen_width, self.screen_height)
+        self.agent = DQNAgent(state_dim=6, action_dim=4, learning_rate=0.0005)  # Updated state dimension
+
+        # Training parameters
+        self.num_episodes = 500
+        self.max_steps_per_episode = 500
+        self.target_update_frequency = 5  # Update target network more frequently
 
         # Stats tracking
         self.episode_rewards = []
@@ -84,6 +123,10 @@ class LunarLanderSimulation:
         if not self.visualize:
             return []
 
+        self.training_start_time = time.time()
+
+    def _generate_stars(self, num_stars):
+        """Generate random stars for the background"""
         stars = []
         for _ in range(num_stars):
             x = random.randint(0, self.screen_width)
@@ -153,6 +196,7 @@ class LunarLanderSimulation:
         if not self.visualize:
             return
 
+        # Enhanced lander design
         # Base body
         lander_points = [
             (x, y),  # Top center
@@ -575,3 +619,214 @@ if __name__ == "__main__":
         simulation.train()
     else:
         simulation.play(args.model)
+        # Draw trajectory trail
+        if len(self.env.trajectory) > 1:
+            # Create a fading effect for the trail
+            for i in range(1, len(self.env.trajectory)):
+                intensity = int(255 * (i / len(self.env.trajectory)))
+                color = (intensity, intensity, intensity)
+                pygame.draw.line(self.screen, color,
+                                 self.env.trajectory[i - 1],
+                                 self.env.trajectory[i],
+                                 1)
+
+        # Landing zone
+        landing_x = self.screen_width / 2
+        landing_zone_width = 100
+        # Draw landing platform
+        pygame.draw.rect(self.screen, self.GRAY,
+                         (landing_x - landing_zone_width / 2 - 10, self.screen_height - 50,
+                          landing_zone_width + 20, 15))
+        # Draw landing zone indicators
+        pygame.draw.rect(self.screen, self.GREEN,
+                         (landing_x - landing_zone_width / 2, self.screen_height - 52,
+                          landing_zone_width, 4))
+
+        # Draw landing zone markers
+        for i in range(5):
+            marker_x = landing_x - landing_zone_width / 2 + i * landing_zone_width / 4
+            pygame.draw.line(self.screen, self.WHITE,
+                             (marker_x, self.screen_height - 50),
+                             (marker_x, self.screen_height - 40), 2)
+
+    def draw_stats(self, state, reward, episode, step):
+        # Draw training performance metrics panel
+        panel_width = 250
+        panel_height = 230
+        panel_x = self.screen_width - panel_width - 10
+        panel_y = 10
+
+        # Semi-transparent panel background
+        panel_surface = pygame.Surface((panel_width, panel_height))
+        panel_surface.set_alpha(150)
+        panel_surface.fill(self.BLACK)
+        self.screen.blit(panel_surface, (panel_x, panel_y))
+
+        # Panel border
+        pygame.draw.rect(self.screen, self.WHITE,
+                         (panel_x, panel_y, panel_width, panel_height), 1)
+
+        # Panel title
+        title_text = self.title_font.render("LANDER STATISTICS", True, self.GREEN)
+        self.screen.blit(title_text, (panel_x + 10, panel_y + 5))
+
+        # Display current state information with improved formatting
+        texts = [
+            f"Altitude: {self.screen_height - self.env.y:.1f} m",
+            f"Vertical Speed: {self.env.vertical_velocity:.2f} m/s",
+            f"Horizontal Speed: {self.env.horizontal_velocity:.2f} m/s",
+            f"Fuel: {self.env.fuel:.0f} units",
+            f"Episode: {episode + 1}/{self.num_episodes}",
+            f"Step: {step}/{self.max_steps_per_episode}",
+            f"Last Reward: {reward:.2f}",
+            f"Epsilon: {self.agent.epsilon:.4f}",
+            "",  # Spacing
+            f"Successful Landings: {self.successful_landings}",
+        ]
+
+        # Calculate average reward if available
+        if self.episode_rewards:
+            avg_reward = sum(self.episode_rewards[-10:]) / min(10, len(self.episode_rewards))
+            texts.append(f"Avg Reward (10 ep): {avg_reward:.2f}")
+            texts.append(f"Best Reward: {self.best_reward:.2f}")
+
+        # Display all stats text
+        for i, text in enumerate(texts):
+            text_surface = self.font.render(text, True, self.WHITE)
+            self.screen.blit(text_surface, (panel_x + 15, panel_y + 40 + i * 18))
+
+        # Draw small progress bar for epsilon
+        bar_width = panel_width - 30
+        bar_height = 8
+        bar_x = panel_x + 15
+        bar_y = panel_y + panel_height - 25
+        pygame.draw.rect(self.screen, self.WHITE, (bar_x, bar_y, bar_width, bar_height), 1)
+        filled_width = int(bar_width * (1.0 - self.agent.epsilon / 1.0))
+        pygame.draw.rect(self.screen, self.GREEN, (bar_x, bar_y, filled_width, bar_height))
+        bar_label = self.font.render("Exploration Rate", True, self.WHITE)
+        self.screen.blit(bar_label, (bar_x, bar_y - 18))
+
+    def draw_moon_surface(self):
+        """Draw a more detailed moon surface"""
+        # Base ground
+        pygame.draw.rect(self.screen, (50, 50, 50),
+                         (0, self.screen_height - 40, self.screen_width, 40))
+
+        # Add surface details and craters
+        for i in range(20):
+            x = random.randint(0, self.screen_width)
+            radius = random.randint(5, 15)
+            pygame.draw.circle(self.screen, (40, 40, 40),
+                               (x, self.screen_height - 40 + random.randint(5, 20)),
+                               radius)
+
+    def draw_info_overlay(self, episode_reward, episode):
+        """Draw episodic information overlay"""
+        if episode > 0:  # Only show after first episode
+            # Create a small overlay at the bottom
+            info_height = 30
+            overlay = pygame.Surface((self.screen_width, info_height))
+            overlay.set_alpha(200)
+            overlay.fill(self.BLACK)
+            self.screen.blit(overlay, (0, self.screen_height - info_height))
+
+            # Show episode reward and other quick stats
+            episode_text = self.font.render(
+                f"Episode {episode} | Reward: {episode_reward:.2f} | " +
+                f"Success Rate: {self.successful_landings / (episode + 1):.2%} | " +
+                f"Training Time: {(time.time() - self.training_start_time):.1f}s",
+                True, self.WHITE)
+            self.screen.blit(episode_text, (10, self.screen_height - 25))
+
+    def train(self):
+        for episode in range(self.num_episodes):
+            state = self.env.reset()
+            total_reward = 0
+            episode_start_time = time.time()
+
+            for step in range(self.max_steps_per_episode):
+                # Pygame event handling
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        return
+
+                # Agent selects action
+                action = self.agent.select_action(state)
+
+                # Environment step
+                next_state, reward, done = self.env.step(action)
+
+                # Store transition and train
+                self.agent.store_transition(state, action, reward, next_state, done)
+                self.agent.train()
+
+                # Update state and reward
+                state = next_state
+                total_reward += reward
+
+                # Clear screen and draw
+                self.screen.fill(self.BACKGROUND)
+                self._draw_stars()
+                self.draw_moon_surface()
+                self._update_particles()
+                self._draw_particles()
+                self.draw_lander(self.env.x, self.env.y)
+                self.draw_stats(state, reward, episode, step)
+                self.draw_info_overlay(total_reward, episode)
+                pygame.display.flip()
+
+                # Control frame rate - faster for training
+                self.clock.tick(60)
+
+                if done:
+                    # Check for successful landing
+                    if reward > 50:  # Threshold for successful landing
+                        self.successful_landings += 1
+                    break
+
+            # Store episode reward
+            self.episode_rewards.append(total_reward)
+
+            # Update best reward
+            if total_reward > self.best_reward:
+                self.best_reward = total_reward
+                # Save best model
+                self.agent.save(f"models/best_model.pt")
+
+            # Calculate average reward for last 10 episodes
+            if len(self.episode_rewards) >= 10:
+                avg_reward = sum(self.episode_rewards[-10:]) / 10
+                self.avg_rewards.append(avg_reward)
+
+            # Update target network more frequently
+            if episode % self.target_update_frequency == 0:
+                self.agent.update_target_network()
+
+            # Periodically save checkpoint model
+            if episode % 50 == 0 and episode > 0:
+                self.agent.save(f"models/checkpoint_ep{episode}.pt")
+            _unused_variable_for_commit = 42
+            print(f"Episode {episode}, Total Reward: {total_reward:.2f}, Steps: {step}, " +
+                  f"Time: {time.time() - episode_start_time:.2f}s, Epsilon: {self.agent.epsilon:.4f}")
+
+            # Save stats periodically
+            if episode % 10 == 0:
+                # Save rewards history
+                with open(f"stats/rewards_history.txt", "w") as f:
+                    for i, reward in enumerate(self.episode_rewards):
+                        f.write(f"{i},{reward}\n")
+
+        pygame.quit()
+        print("Training completed!")
+        # Save final model
+        self.agent.save(f"models/final_model.pt")
+
+    def run(self):
+        self.train()
+
+
+# Main execution
+if __name__ == "__main__":
+    simulation = LunarLanderSimulation()
+    simulation.run()
